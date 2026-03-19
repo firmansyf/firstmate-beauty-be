@@ -1,9 +1,15 @@
 // src/config/payment.config.ts
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const MINIO_PUBLIC_ENDPOINT = process.env.MINIO_PUBLIC_ENDPOINT || process.env.MINIO_PRIVATE_ENDPOINT || 'http://localhost:9000';
+const MINIO_BUCKET = process.env.MINIO_BUCKET || 'alfath-skin';
 
 export const paymentConfig = {
   qris: {
     merchantName: 'Alfath Skin',
-    imageUrl: '/uploads/qris-code.png',
+    imageUrl: `${MINIO_PUBLIC_ENDPOINT}/${MINIO_BUCKET}/qris-code.png`,
     instructions: [
       'Buka aplikasi e-wallet atau mobile banking Anda',
       'Pilih menu Scan QR atau QRIS',

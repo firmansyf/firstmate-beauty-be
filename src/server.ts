@@ -5,8 +5,9 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import compression from 'compression';
 import dotenv from 'dotenv';
-import path from 'path';
 import routes from './routes';
+import { runMigrations } from './config/migrate';
+import { initMinio } from './config/minio';
 
 // Load environment variables
 dotenv.config();
@@ -17,20 +18,16 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow images to be loaded from other origins
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 app.use(cors({
   origin: process.env.FRONTEND_URL,
   credentials: true,
 }));
-app.use(compression()); // Compress responses
-app.use(morgan('dev')); // Request logging
-app.use(express.json()); // Parse JSON bodies
-app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
-
-// Static files for uploads - use absolute path
-const uploadsPath = path.join(__dirname, '../uploads');
-app.use('/uploads', express.static(uploadsPath));
+app.use(compression());
+app.use(morgan('dev'));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // API Routes
 app.use('/api', routes);
@@ -63,26 +60,42 @@ app.use((req: Request, res: Response) => {
 // Error Handler
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error('Error:', err);
-  
+
   res.status(500).json({
     message: 'Terjadi kesalahan server',
     error: process.env.NODE_ENV === 'development' ? err.message : undefined,
   });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`
+// Initialize and start server
+const start = async () => {
+  try {
+    // Auto-run database migrations
+    await runMigrations();
+
+    // Auto-create MinIO bucket + set public policy
+    await initMinio();
+
+    // Start server
+    app.listen(PORT, () => {
+      console.log(`
   ╔═══════════════════════════════════════╗
   ║                                       ║
-  ║   ✨ Alfath Skin API Server Running       
-  ║                                       
-  ║   Port: ${PORT}                       
+  ║   ✨ Alfath Skin API Server Running
+  ║
+  ║   Port: ${PORT}
   ║   Environment: ${process.env.NODE_ENV || 'development'}
-  ║   URL: http://localhost:${PORT}       
+  ║   URL: http://localhost:${PORT}
   ║                                       ║
   ╚═══════════════════════════════════════╝
-  `);
-});
+      `);
+    });
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+start();
 
 export default app;
