@@ -1,0 +1,14 @@
+node_modules
+.env
+/nul
+uploads
+
+dist/
+build/
+.env*
+logs/
+coverage/
+.vscode/
+.idea/
+.DS_Store
+npm-debug.log*
