@@ -3,90 +3,40 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-let transporter: nodemailer.Transporter | null = null;
-let transporterReady: Promise<void>;
-
-const initTransporter = async () => {
+const createTransporter = () => {
   const smtpUser = process.env.SMTP_USER;
   const smtpPass = process.env.SMTP_PASS;
 
   console.log('📧 Email config:', {
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: process.env.SMTP_PORT || '587',
-    secure: process.env.SMTP_SECURE === 'true',
     user: smtpUser ? smtpUser.substring(0, 5) + '***' : 'NOT SET',
     pass: smtpPass ? '***SET***' : 'NOT SET',
   });
 
-  if (smtpUser && smtpPass) {
-    transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: {
-        user: smtpUser,
-        pass: smtpPass,
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-    });
-
-    try {
-      await transporter.verify();
-      console.log('✅ Email transporter ready (SMTP)');
-      return;
-    } catch (error: any) {
-      console.error('❌ SMTP verification failed:', error.message);
-      console.error('❌ SMTP config used:', {
-        host: process.env.SMTP_HOST || 'smtp.gmail.com',
-        port: process.env.SMTP_PORT || '587',
-        user: smtpUser.substring(0, 5) + '***',
-      });
-      // Do NOT fall back to Ethereal in production — keep transporter as null so error is explicit
-      if (process.env.NODE_ENV === 'production') {
-        console.error('❌ Email will NOT be sent. Fix SMTP config in Railway environment variables.');
-        return;
-      }
-      console.log('📧 Falling back to Ethereal test account (dev only)...');
-      transporter = null;
-    }
-  } else {
-    console.warn('⚠️ SMTP_USER or SMTP_PASS not set');
+  if (!smtpUser || !smtpPass) {
+    throw new Error('SMTP_USER or SMTP_PASS environment variable is not set');
   }
 
-  // Fallback: Ethereal test account
-  try {
-    const testAccount = await nodemailer.createTestAccount();
-    transporter = nodemailer.createTransport({
-      host: 'smtp.ethereal.email',
-      port: 587,
-      secure: false,
-      auth: {
-        user: testAccount.user,
-        pass: testAccount.pass,
-      },
-    });
-    console.log('✅ Email transporter ready (Ethereal Test)');
-    console.log(`📧 Test email account: ${testAccount.user}`);
-  } catch (err: any) {
-    console.error('❌ Ethereal fallback also failed:', err.message);
-  }
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT || '587'),
+    secure: process.env.SMTP_SECURE === 'true',
+    auth: {
+      user: smtpUser,
+      pass: smtpPass,
+    },
+    tls: {
+      rejectUnauthorized: false,
+    },
+  });
 };
 
-// Initialize and store the promise so we can await it
-transporterReady = initTransporter();
-
 export const sendOTPEmail = async (email: string, otpCode: string) => {
-  // Wait for transporter to be initialized
-  await transporterReady;
-
-  if (!transporter) {
-    throw new Error('Email transporter is not initialized');
-  }
+  const transporter = createTransporter();
 
   const mailOptions = {
-    from: `"Al-fath Skin" <${process.env.SMTP_USER || 'noreply@alfathskin.com'}>`,
+    from: `"Alfath Skin" <${process.env.SMTP_USER}>`,
     to: email,
     subject: 'Kode Verifikasi OTP - Al-fath Skin',
     html: `
@@ -121,13 +71,5 @@ export const sendOTPEmail = async (email: string, otpCode: string) => {
   console.log(`📧 Sending OTP to ${email}...`);
   const info = await transporter.sendMail(mailOptions);
   console.log(`✅ OTP email sent to ${email}, messageId: ${info.messageId}`);
-
-  const previewUrl = nodemailer.getTestMessageUrl(info);
-  if (previewUrl) {
-    console.log(`📧 OTP Email preview: ${previewUrl}`);
-  }
-
   return info;
 };
-
-export default transporter;
