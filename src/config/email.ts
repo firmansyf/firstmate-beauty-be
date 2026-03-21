@@ -45,7 +45,7 @@ export const sendOTPEmail = async (email: string, otpCode: string): Promise<void
   const t = getTransporter();
 
   const mailOptions = {
-    from: `"Alfath Skin" <${process.env.SMTP_USER}>`,
+    from: `"Alfath Skin" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
     to: email,
     subject: 'Kode Verifikasi OTP - Al-fath Skin',
     html: `
