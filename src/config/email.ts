@@ -1,27 +1,15 @@
-import nodemailer from 'nodemailer';
+import axios from 'axios';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
 export const sendOTPEmail = async (email: string, otpCode: string): Promise<void> => {
-  const brevoUser = process.env.BREVO_SMTP_USER;
-  const brevoPassword = process.env.BREVO_SMTP_PASSWORD;
+  const apiKey = process.env.BREVO_API_KEY;
+  const from = process.env.SMTP_FROM || 'noreply@alfath-skin.com';
 
-  if (!brevoUser || !brevoPassword) {
-    throw new Error('BREVO_SMTP_USER or BREVO_SMTP_PASSWORD environment variable is not set');
+  if (!apiKey) {
+    throw new Error('BREVO_API_KEY environment variable is not set');
   }
-
-  const transporter = nodemailer.createTransport({
-    host: 'smtp-relay.brevo.com',
-    port: 587,
-    secure: false,
-    auth: {
-      user: brevoUser,
-      pass: brevoPassword,
-    },
-  });
-
-  const from = process.env.SMTP_FROM || brevoUser;
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
@@ -47,14 +35,23 @@ export const sendOTPEmail = async (email: string, otpCode: string): Promise<void
     </div>
   `;
 
-  console.log(`📧 Sending OTP to ${email} via Brevo...`);
+  console.log(`📧 Sending OTP to ${email} via Brevo API...`);
 
-  await transporter.sendMail({
-    from: `Alfath Skin <${from}>`,
-    to: email,
-    subject: 'Kode Verifikasi OTP - Al-fath Skin',
-    html,
-  });
+  await axios.post(
+    'https://api.brevo.com/v3/smtp/email',
+    {
+      sender: { name: 'Alfath Skin', email: from },
+      to: [{ email }],
+      subject: 'Kode Verifikasi OTP - Al-fath Skin',
+      htmlContent: html,
+    },
+    {
+      headers: {
+        'api-key': apiKey,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
 
   console.log(`✅ OTP email sent to ${email}`);
 };
