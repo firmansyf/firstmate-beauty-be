@@ -175,6 +175,24 @@ CREATE TABLE IF NOT EXISTS banners (
 CREATE INDEX IF NOT EXISTS idx_banners_active ON banners(is_active);
 CREATE INDEX IF NOT EXISTS idx_banners_dates ON banners(start_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_banners_order ON banners(display_order);
+
+-- 11. FEEDBACKS
+CREATE TABLE IF NOT EXISTS feedbacks (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255),
+    rating INTEGER CHECK (rating >= 1 AND rating <= 5),
+    category VARCHAR(50) NOT NULL DEFAULT 'general'
+        CHECK (category IN ('general', 'bug', 'suggestion', 'praise')),
+    message TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_feedbacks_user_id ON feedbacks(user_id);
+CREATE INDEX IF NOT EXISTS idx_feedbacks_rating ON feedbacks(rating);
+CREATE INDEX IF NOT EXISTS idx_feedbacks_is_read ON feedbacks(is_read);
+CREATE INDEX IF NOT EXISTS idx_feedbacks_created_at ON feedbacks(created_at DESC);
 `;
 
 export const runMigrations = async (): Promise<void> => {

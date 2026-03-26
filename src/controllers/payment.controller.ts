@@ -82,6 +82,51 @@ export const createSnapToken = async (req: Request, res: Response) => {
   }
 };
 
+// Check & sync payment status from Midtrans (called by frontend after Snap success)
+export const checkPaymentStatus = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    const { orderId } = req.params;
+
+    const orderResult = await query(
+      'SELECT id, order_number, payment_status FROM orders WHERE id = $1 AND user_id = $2',
+      [orderId, userId]
+    );
+
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Pesanan tidak ditemukan' });
+    }
+
+    const order = orderResult.rows[0];
+
+    // Query actual status from Midtrans
+    const statusResponse = await (snap as any).transaction.status(order.order_number);
+    const { transaction_status, fraud_status } = statusResponse;
+
+    let newPaymentStatus = order.payment_status;
+
+    if (transaction_status === 'capture' && fraud_status === 'accept') {
+      newPaymentStatus = 'paid';
+    } else if (transaction_status === 'settlement') {
+      newPaymentStatus = 'paid';
+    } else if (['cancel', 'deny', 'expire'].includes(transaction_status)) {
+      newPaymentStatus = 'expired';
+    }
+
+    if (newPaymentStatus !== order.payment_status) {
+      const updateQuery = newPaymentStatus === 'paid'
+        ? `UPDATE orders SET payment_status = $1, paid_at = CURRENT_TIMESTAMP WHERE id = $2`
+        : `UPDATE orders SET payment_status = $1 WHERE id = $2`;
+      await query(updateQuery, [newPaymentStatus, order.id]);
+    }
+
+    res.json({ message: 'Status berhasil dicek', payment_status: newPaymentStatus });
+  } catch (error) {
+    console.error('Check payment status error:', error);
+    res.status(500).json({ message: 'Gagal mengecek status pembayaran' });
+  }
+};
+
 // Handle Midtrans payment notification (webhook)
 export const handleNotification = async (req: Request, res: Response) => {
   try {
