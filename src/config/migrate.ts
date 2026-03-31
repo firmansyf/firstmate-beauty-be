@@ -193,6 +193,19 @@ CREATE INDEX IF NOT EXISTS idx_feedbacks_user_id ON feedbacks(user_id);
 CREATE INDEX IF NOT EXISTS idx_feedbacks_rating ON feedbacks(rating);
 CREATE INDEX IF NOT EXISTS idx_feedbacks_is_read ON feedbacks(is_read);
 CREATE INDEX IF NOT EXISTS idx_feedbacks_created_at ON feedbacks(created_at DESC);
+
+-- 12. NOTIFICATIONS
+CREATE TABLE IF NOT EXISTS notifications (
+    id SERIAL PRIMARY KEY,
+    type VARCHAR(50) NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    data JSONB,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC);
 `;
 
 export const runMigrations = async (): Promise<void> => {

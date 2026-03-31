@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { pool, query } from '../config/database';
+import { createNotification } from './notifications.controller';
 
 // Generate order number
 const generateOrderNumber = () => {
@@ -117,6 +118,14 @@ export const createOrder = async (req: Request, res: Response) => {
     await client.query('DELETE FROM cart_items WHERE cart_id = $1', [cartId]);
 
     await client.query('COMMIT');
+
+    // Fire-and-forget notification
+    createNotification(
+      'new_order',
+      'Pesanan Baru',
+      `Pesanan ${orderNumber} dari ${recipient_name} telah masuk`,
+      { order_id: order.id, order_number: orderNumber, total }
+    );
 
     res.status(201).json({
       message: 'Pesanan berhasil dibuat',

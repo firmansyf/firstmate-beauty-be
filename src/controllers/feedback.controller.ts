@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { query } from '../config/database';
+import { createNotification } from './notifications.controller';
 
 // Submit feedback (public — works for guests and logged-in users)
 export const submitFeedback = async (req: Request, res: Response) => {
@@ -25,6 +26,20 @@ export const submitFeedback = async (req: Request, res: Response) => {
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
       [userId, name, email, rating || null, category, message]
+    );
+
+    // Fire-and-forget notification
+    const categoryLabel: Record<string, string> = {
+      general: 'Umum',
+      bug: 'Bug',
+      suggestion: 'Saran',
+      praise: 'Pujian',
+    };
+    createNotification(
+      'new_feedback',
+      'Feedback Baru',
+      `${name} mengirim feedback dengan kategori ${categoryLabel[category] ?? category}${rating ? ` (rating ${rating}/5)` : ''}`,
+      { feedback_id: result.rows[0].id, name, category, rating }
     );
 
     res.status(201).json({

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import crypto from 'crypto';
 import { query } from '../config/database';
 import { sendOTPEmail } from '../config/email';
+import { createNotification } from './notifications.controller';
 
 // Generate 6-digit OTP
 const generateOTP = (): string => {
@@ -109,6 +110,17 @@ export const verifyOTP = async (req: Request, res: Response) => {
       'UPDATE users SET is_verified = TRUE WHERE email = $1',
       [email]
     );
+
+    // Fire-and-forget notification
+    query('SELECT name FROM users WHERE email = $1', [email]).then((r) => {
+      const name = r.rows[0]?.name || email;
+      createNotification(
+        'new_user',
+        'Pengguna Baru Terdaftar',
+        `${name} (${email}) berhasil mendaftar dan memverifikasi akun`,
+        { email, name }
+      );
+    });
 
     res.json({
       message: 'Email berhasil diverifikasi',

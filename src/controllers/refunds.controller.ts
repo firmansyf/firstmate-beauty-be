@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { query } from '../config/database';
+import { createNotification } from './notifications.controller';
 
 // Generate refund number
 const generateRefundNumber = () => {
@@ -79,6 +80,14 @@ export const createRefundRequest = async (req: Request, res: Response) => {
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
       [order_id, userId, refundNumber, reason, order.total, ewallet_phone]
+    );
+
+    // Fire-and-forget notification
+    createNotification(
+      'new_refund',
+      'Permintaan Refund Baru',
+      `Refund ${refundNumber} untuk pesanan #${order_id} telah diajukan`,
+      { refund_id: result.rows[0].id, refund_number: refundNumber, order_id }
     );
 
     res.status(201).json({

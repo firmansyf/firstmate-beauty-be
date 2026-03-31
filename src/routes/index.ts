@@ -13,6 +13,7 @@ import bannerRoutes from './banners.routes';
 import otpRoutes from './otp.routes';
 import paymentRoutes from './payment.routes';
 import feedbackRoutes from './feedback.routes';
+import notificationRoutes from './notifications.routes';
 
 const router = Router();
 
@@ -29,6 +30,7 @@ router.use('/refunds', refundRoutes);
 router.use('/banners', bannerRoutes);
 router.use('/payment', paymentRoutes);
 router.use('/feedback', feedbackRoutes);
+router.use('/notifications', notificationRoutes);
 
 // Health check
 router.get('/health', (req, res) => {
