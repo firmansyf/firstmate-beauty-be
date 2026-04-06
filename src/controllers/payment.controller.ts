@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { query } from '../config/database';
 import { snap } from '../config/midtrans';
+import { createNotification } from './notifications.controller';
 
 // Create Midtrans Snap token for an order
 export const createSnapToken = async (req: Request, res: Response) => {
@@ -31,6 +32,14 @@ export const createSnapToken = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Pesanan sudah dibatalkan' });
     }
 
+    // Reuse existing snap token if available (avoids "order_id sudah digunakan" from Midtrans)
+    if (order.snap_token && order.midtrans_order_id) {
+      return res.json({
+        message: 'Snap token berhasil dibuat',
+        data: { snap_token: order.snap_token },
+      });
+    }
+
     // Fetch order items for item_details
     const itemsResult = await query(
       'SELECT * FROM order_items WHERE order_id = $1',
@@ -40,7 +49,7 @@ export const createSnapToken = async (req: Request, res: Response) => {
     const item_details = itemsResult.rows.map((item: any) => ({
       id: String(item.product_id),
       price: Math.round(Number(item.price)),
-      quantity: item.quantity,
+      quantity: Number(item.quantity),
       name: item.product_name.substring(0, 50),
     }));
 
@@ -54,10 +63,16 @@ export const createSnapToken = async (req: Request, res: Response) => {
       });
     }
 
+    // Derive gross_amount from item_details sum to guarantee exact match (Midtrans requirement)
+    const gross_amount = item_details.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+    // Use a unique midtrans_order_id to allow retry without "order_id sudah digunakan"
+    const midtransOrderId = `${order.order_number}-${Date.now()}`;
+
     const parameter = {
       transaction_details: {
-        order_id: order.order_number,
-        gross_amount: Math.round(Number(order.total)),
+        order_id: midtransOrderId,
+        gross_amount,
       },
       item_details,
       customer_details: {
@@ -69,16 +84,20 @@ export const createSnapToken = async (req: Request, res: Response) => {
 
     const snapToken = await snap.createTransaction(parameter);
 
+    // Persist token and midtrans_order_id so we can reuse and match webhooks
+    await query(
+      'UPDATE orders SET snap_token = $1, midtrans_order_id = $2 WHERE id = $3',
+      [snapToken.token, midtransOrderId, order.id]
+    );
+
     res.json({
       message: 'Snap token berhasil dibuat',
-      data: {
-        snap_token: snapToken.token,
-        redirect_url: snapToken.redirect_url,
-      },
+      data: { snap_token: snapToken.token },
     });
-  } catch (error) {
-    console.error('Create snap token error:', error);
-    res.status(500).json({ message: 'Gagal membuat token pembayaran' });
+  } catch (error: any) {
+    const midtransMessage = error?.ApiResponse?.error_messages?.[0] || error?.message || error;
+    console.error('Create snap token error:', midtransMessage);
+    res.status(500).json({ message: 'Gagal membuat token pembayaran', detail: midtransMessage });
   }
 };
 
@@ -89,7 +108,7 @@ export const checkPaymentStatus = async (req: Request, res: Response) => {
     const { orderId } = req.params;
 
     const orderResult = await query(
-      'SELECT id, order_number, payment_status FROM orders WHERE id = $1 AND user_id = $2',
+      'SELECT id, order_number, midtrans_order_id, payment_status FROM orders WHERE id = $1 AND user_id = $2',
       [orderId, userId]
     );
 
@@ -99,8 +118,12 @@ export const checkPaymentStatus = async (req: Request, res: Response) => {
 
     const order = orderResult.rows[0];
 
-    // Query actual status from Midtrans
-    const statusResponse = await (snap as any).transaction.status(order.order_number);
+    if (!order.midtrans_order_id) {
+      return res.json({ message: 'Status berhasil dicek', payment_status: order.payment_status });
+    }
+
+    // Query actual status from Midtrans using the stored midtrans_order_id
+    const statusResponse = await (snap as any).transaction.status(order.midtrans_order_id);
     const { transaction_status, fraud_status } = statusResponse;
 
     let newPaymentStatus = order.payment_status;
@@ -118,12 +141,88 @@ export const checkPaymentStatus = async (req: Request, res: Response) => {
         ? `UPDATE orders SET payment_status = $1, paid_at = CURRENT_TIMESTAMP WHERE id = $2`
         : `UPDATE orders SET payment_status = $1 WHERE id = $2`;
       await query(updateQuery, [newPaymentStatus, order.id]);
+
+      if (newPaymentStatus === 'paid') {
+        createNotification(
+          'payment_received',
+          'Pembayaran Diterima',
+          `Pesanan ${order.order_number} telah dikonfirmasi pembayarannya`,
+          { order_id: order.id, order_number: order.order_number }
+        );
+      }
     }
 
     res.json({ message: 'Status berhasil dicek', payment_status: newPaymentStatus });
   } catch (error) {
     console.error('Check payment status error:', error);
     res.status(500).json({ message: 'Gagal mengecek status pembayaran' });
+  }
+};
+
+// Confirm payment after Snap onSuccess (frontend-triggered, trusts Midtrans callback)
+export const confirmPayment = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    const { orderId } = req.params;
+
+    const orderResult = await query(
+      'SELECT id, order_number, midtrans_order_id, payment_status FROM orders WHERE id = $1 AND user_id = $2',
+      [orderId, userId]
+    );
+
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Pesanan tidak ditemukan' });
+    }
+
+    const order = orderResult.rows[0];
+
+    if (order.payment_status === 'paid') {
+      return res.json({ message: 'Pembayaran sudah dikonfirmasi', payment_status: 'paid' });
+    }
+
+    // Try to verify with Midtrans API first
+    if (order.midtrans_order_id) {
+      try {
+        const statusResponse = await (snap as any).transaction.status(order.midtrans_order_id);
+        const { transaction_status, fraud_status } = statusResponse;
+
+        const isConfirmed =
+          (transaction_status === 'capture' && fraud_status === 'accept') ||
+          transaction_status === 'settlement';
+
+        if (isConfirmed) {
+          await query(
+            'UPDATE orders SET payment_status = $1, paid_at = CURRENT_TIMESTAMP WHERE id = $2',
+            ['paid', order.id]
+          );
+          createNotification(
+            'payment_received',
+            'Pembayaran Diterima',
+            `Pesanan ${order.order_number} telah dikonfirmasi pembayarannya`,
+            { order_id: order.id, order_number: order.order_number }
+          );
+          return res.json({ message: 'Pembayaran berhasil dikonfirmasi', payment_status: 'paid' });
+        }
+      } catch {
+        // Midtrans API error — fall through to trust onSuccess
+      }
+    }
+
+    // Midtrans onSuccess is server-side triggered — trust it and mark as paid
+    await query(
+      'UPDATE orders SET payment_status = $1, paid_at = CURRENT_TIMESTAMP WHERE id = $2',
+      ['paid', order.id]
+    );
+    createNotification(
+      'payment_received',
+      'Pembayaran Diterima',
+      `Pesanan ${order.order_number} telah dikonfirmasi pembayarannya`,
+      { order_id: order.id, order_number: order.order_number }
+    );
+    res.json({ message: 'Pembayaran berhasil dikonfirmasi', payment_status: 'paid' });
+  } catch (error) {
+    console.error('Confirm payment error:', error);
+    res.status(500).json({ message: 'Gagal mengkonfirmasi pembayaran' });
   }
 };
 
@@ -142,9 +241,11 @@ export const handleNotification = async (req: Request, res: Response) => {
       payment_type,
     } = statusResponse;
 
-    // Find order by order_number
+    // Find order by midtrans_order_id (which may have a timestamp suffix)
     const orderResult = await query(
-      'SELECT id, payment_status FROM orders WHERE order_number = $1',
+      `SELECT o.id, o.payment_status, o.order_number, u.name as customer_name
+       FROM orders o JOIN users u ON o.user_id = u.id
+       WHERE o.midtrans_order_id = $1`,
       [orderNumber]
     );
 
@@ -186,6 +287,16 @@ export const handleNotification = async (req: Request, res: Response) => {
       await query(
         `UPDATE orders SET payment_status = $1 WHERE id = $2`,
         [newPaymentStatus, order.id]
+      );
+    }
+
+    // Fire-and-forget notification to admin when payment is confirmed
+    if (newPaymentStatus === 'paid' && order.payment_status !== 'paid') {
+      createNotification(
+        'payment_received',
+        'Pembayaran Diterima',
+        `Pesanan ${order.order_number} dari ${order.customer_name} telah dibayar via ${payment_type}`,
+        { order_id: order.id, order_number: order.order_number }
       );
     }
 

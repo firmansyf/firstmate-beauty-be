@@ -96,8 +96,12 @@ CREATE TABLE IF NOT EXISTS orders (
     shipped_at TIMESTAMP,
     delivered_at TIMESTAMP,
     cancelled_at TIMESTAMP,
+    snap_token TEXT,
+    midtrans_order_id VARCHAR(60),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS snap_token TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS midtrans_order_id VARCHAR(60);
 CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_order_number ON orders(order_number);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
