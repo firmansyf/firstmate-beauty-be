@@ -13,7 +13,7 @@ export const getUsers = async (req: Request, res: Response) => {
         (SELECT COUNT(*) FROM orders o WHERE o.user_id = u.id) as order_count,
         (SELECT COALESCE(SUM(total), 0) FROM orders o WHERE o.user_id = u.id AND o.status = 'delivered') as total_spent
       FROM users u
-      WHERE 1=1
+      WHERE u.is_verified = TRUE
     `;
     const params: any[] = [];
     let paramIndex = 1;
@@ -40,7 +40,7 @@ export const getUsers = async (req: Request, res: Response) => {
     const result = await query(sql, params);
 
     // Get total count for pagination
-    let countSql = 'SELECT COUNT(*) FROM users u WHERE 1=1';
+    let countSql = 'SELECT COUNT(*) FROM users u WHERE u.is_verified = TRUE';
     const countParams: any[] = [];
     let countParamIndex = 1;
 
@@ -126,6 +126,7 @@ export const getUserStats = async (req: Request, res: Response) => {
         COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '30 days') as new_users_30d,
         COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days') as new_users_7d
       FROM users
+      WHERE is_verified = TRUE
     `);
 
     res.json({

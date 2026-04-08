@@ -3,7 +3,7 @@ import bcrypt from 'bcrypt';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import crypto from 'crypto';
 import { query } from '../config/database';
-import { sendOTPEmail } from '../config/email';
+import { sendOTPEmail, sendPasswordResetEmail } from '../config/email';
 
 export const register = async (req: Request, res: Response) => {
   try {
@@ -216,6 +216,67 @@ export const login = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('💥💥💥 LOGIN ERROR:', error);
     console.log('========== LOGIN DEBUG END (ERROR) ==========\n');
+    res.status(500).json({ message: 'Terjadi kesalahan server' });
+  }
+};
+
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email wajib diisi' });
+    }
+
+    // Check user exists and is verified
+    const userResult = await query(
+      'SELECT id FROM users WHERE email = $1 AND is_verified = TRUE',
+      [email]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Email tidak terdaftar' });
+    }
+
+    res.json({ message: 'Email ditemukan' });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ message: 'Terjadi kesalahan server' });
+  }
+};
+
+export const resetPassword = async (req: Request, res: Response) => {
+  try {
+    const { email, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      return res.status(400).json({ message: 'Email dan password baru wajib diisi' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: 'Password minimal 6 karakter' });
+    }
+
+    // Check user exists and is verified
+    const userResult = await query(
+      'SELECT id FROM users WHERE email = $1 AND is_verified = TRUE',
+      [email]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Email tidak ditemukan' });
+    }
+
+    // Update password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await query(
+      'UPDATE users SET password = $1 WHERE email = $2',
+      [hashedPassword, email]
+    );
+
+    res.json({ message: 'Password berhasil direset. Silakan login dengan password baru.' });
+  } catch (error) {
+    console.error('Reset password error:', error);
     res.status(500).json({ message: 'Terjadi kesalahan server' });
   }
 };
