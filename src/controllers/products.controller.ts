@@ -145,6 +145,68 @@ export const getProductById = async (req: Request, res: Response) => {
   }
 };
 
+// Get related products by slug (same category, fallback to other products)
+export const getRelatedProducts = async (req: Request, res: Response) => {
+  try {
+    const { slug } = req.params;
+
+    // Get current product's id and category
+    const current = await query(
+      'SELECT id, category_id FROM products WHERE slug = $1',
+      [slug]
+    );
+
+    if (current.rows.length === 0) {
+      return res.status(404).json({ message: 'Produk tidak ditemukan' });
+    }
+
+    const { id: currentId, category_id } = current.rows[0];
+
+    // Same category first
+    let related: any[] = [];
+
+    if (category_id) {
+      const sameCat = await query(
+        `SELECT p.*, c.name as category_name
+         FROM products p
+         LEFT JOIN categories c ON p.category_id = c.id
+         WHERE p.is_available = true
+           AND p.category_id = $1
+           AND p.id != $2
+         ORDER BY p.is_featured DESC, p.rating DESC, p.created_at DESC
+         LIMIT 8`,
+        [category_id, currentId]
+      );
+      related = sameCat.rows;
+    }
+
+    // Fill remaining slots with other products if < 4
+    if (related.length < 4) {
+      const existingIds = [currentId, ...related.map((r) => r.id)];
+      const placeholders = existingIds.map((_, i) => `$${i + 1}`).join(', ');
+      const fill = await query(
+        `SELECT p.*, c.name as category_name
+         FROM products p
+         LEFT JOIN categories c ON p.category_id = c.id
+         WHERE p.is_available = true
+           AND p.id NOT IN (${placeholders})
+         ORDER BY p.is_featured DESC, p.rating DESC, p.created_at DESC
+         LIMIT $${existingIds.length + 1}`,
+        [...existingIds, 8 - related.length]
+      );
+      related = [...related, ...fill.rows];
+    }
+
+    res.json({
+      message: 'Produk terkait berhasil diambil',
+      data: related,
+    });
+  } catch (error) {
+    console.error('Get related products error:', error);
+    res.status(500).json({ message: 'Terjadi kesalahan server' });
+  }
+};
+
 // Admin: Create product
 export const createProduct = async (req: Request, res: Response) => {
   try {

@@ -4,6 +4,7 @@ import {
   getProducts,
   getProductBySlug,
   getProductById,
+  getRelatedProducts,
   getProductsAdmin,
   createProduct,
   updateProduct,
@@ -18,6 +19,7 @@ const router = Router();
 router.get('/', getProducts);
 router.get('/categories', getCategories);
 router.get('/id/:id', getProductById); // Get by ID for admin edit
+router.get('/:slug/related', getRelatedProducts);
 router.get('/:slug', getProductBySlug);
 
 // Admin routes
