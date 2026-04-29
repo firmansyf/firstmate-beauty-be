@@ -35,9 +35,9 @@ app.use('/api', routes);
 // Root endpoint
 app.get('/', (req: Request, res: Response) => {
   res.json({
-    name: 'Alfath Skin API',
+    name: 'FirstMate Beauty API',
     version: '1.0.0',
-    description: 'Backend API untuk Alfath Skin E-Commerce',
+    description: 'Backend API untuk FirstMate Beauty E-Commerce',
     endpoints: {
       health: '/api/health',
       auth: '/api/auth',
@@ -81,7 +81,7 @@ const start = async () => {
       console.log(`
   ╔═══════════════════════════════════════╗
   ║                                       ║
-  ║   ✨ Alfath Skin API Server Running
+  ║   ✨ FirstMate Beauty API Server Running
   ║
   ║   Port: ${PORT}
   ║   Environment: ${process.env.NODE_ENV || 'development'}

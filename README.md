@@ -1,6 +1,6 @@
-# Alfath Skin - Backend
+# FirstMate Beauty - Backend
 
-REST API server for **Alfath Skin**, a skincare e-commerce platform built with Express.js, TypeScript, and PostgreSQL.
+REST API server for **FirstMate Beauty**, a skincare e-commerce platform built with Express.js, TypeScript, and PostgreSQL.
 
 ## Tech Stack
 

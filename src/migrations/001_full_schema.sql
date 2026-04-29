@@ -1,5 +1,5 @@
 -- =============================================================================
--- COMPLETE DATABASE SCHEMA - Alfath Skin E-Commerce
+-- COMPLETE DATABASE SCHEMA - FirstMate Beauty E-Commerce
 -- PostgreSQL
 -- Tables created in dependency order
 -- =============================================================================

@@ -36,7 +36,7 @@ router.use('/notifications', notificationRoutes);
 router.get('/health', (req, res) => {
   res.json({ 
     status: 'OK', 
-    message: 'Alfath Skin API is running',
+    message: 'FirstMate Beauty API is running',
     timestamp: new Date().toISOString()
   });
 });

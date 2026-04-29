@@ -1,7 +1,7 @@
 {
   "name": "alfath-skin-backend",
   "version": "1.0.0",
-  "description": "Backend API untuk Alfath Skin E-Commerce",
+  "description": "Backend API untuk FirstMate Beauty E-Commerce",
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon src/server.ts",

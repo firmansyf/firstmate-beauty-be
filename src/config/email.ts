@@ -14,7 +14,7 @@ export const sendOTPEmail = async (email: string, otpCode: string): Promise<void
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
       <div style="text-align: center; margin-bottom: 24px;">
-        <h1 style="color: #db2777; font-size: 24px; margin: 0;">Alfath Skin</h1>
+        <h1 style="color: #db2777; font-size: 24px; margin: 0;">FirstMate Beauty</h1>
       </div>
       <div style="background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 32px; text-align: center;">
         <h2 style="color: #111827; font-size: 18px; margin: 0 0 8px;">Verifikasi Email Anda</h2>
@@ -30,7 +30,7 @@ export const sendOTPEmail = async (email: string, otpCode: string): Promise<void
         </p>
       </div>
       <p style="color: #9ca3af; font-size: 11px; text-align: center; margin-top: 24px;">
-        Jika Anda tidak mendaftar di Alfath Skin, abaikan email ini.
+        Jika Anda tidak mendaftar di FirstMate Beauty, abaikan email ini.
       </p>
     </div>
   `;
@@ -40,7 +40,7 @@ export const sendOTPEmail = async (email: string, otpCode: string): Promise<void
   await axios.post(
     'https://api.brevo.com/v3/smtp/email',
     {
-      sender: { name: 'Alfath Skin', email: from },
+      sender: { name: 'FirstMate Beauty', email: from },
       to: [{ email }],
       subject: 'Kode Verifikasi OTP - Al-fath Skin',
       htmlContent: html,
@@ -67,7 +67,7 @@ export const sendPasswordResetEmail = async (email: string, otpCode: string): Pr
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px;">
       <div style="text-align: center; margin-bottom: 24px;">
-        <h1 style="color: #db2777; font-size: 24px; margin: 0;">Alfath Skin</h1>
+        <h1 style="color: #db2777; font-size: 24px; margin: 0;">FirstMate Beauty</h1>
       </div>
       <div style="background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 32px; text-align: center;">
         <h2 style="color: #111827; font-size: 18px; margin: 0 0 8px;">Reset Password</h2>
@@ -93,9 +93,9 @@ export const sendPasswordResetEmail = async (email: string, otpCode: string): Pr
   await axios.post(
     'https://api.brevo.com/v3/smtp/email',
     {
-      sender: { name: 'Alfath Skin', email: from },
+      sender: { name: 'FirstMate Beauty', email: from },
       to: [{ email }],
-      subject: 'Reset Password - Alfath Skin',
+      subject: 'Reset Password - FirstMate Beauty',
       htmlContent: html,
     },
     {
