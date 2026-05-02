@@ -1,5 +1,14 @@
 import { Request, Response } from 'express';
-import { query } from '../config/database';
+import { pool, query } from '../config/database';
+
+const variantsSubquery = `
+  COALESCE(
+    (SELECT json_agg(v.* ORDER BY v.display_order ASC, v.id ASC)
+     FROM product_variants v
+     WHERE v.product_id = p.id),
+    '[]'
+  ) AS variants
+`;
 
 // Get all products with filters
 export const getProducts = async (req: Request, res: Response) => {
@@ -97,7 +106,8 @@ export const getProductBySlug = async (req: Request, res: Response) => {
     const { slug } = req.params;
 
     const result = await query(
-      `SELECT p.*, c.name as category_name, c.slug as category_slug
+      `SELECT p.*, c.name as category_name, c.slug as category_slug,
+              ${variantsSubquery}
        FROM products p
        LEFT JOIN categories c ON p.category_id = c.id
        WHERE p.slug = $1`,
@@ -124,7 +134,8 @@ export const getProductById = async (req: Request, res: Response) => {
     const { id } = req.params;
 
     const result = await query(
-      `SELECT p.*, c.name as category_name, c.slug as category_slug
+      `SELECT p.*, c.name as category_name, c.slug as category_slug,
+              ${variantsSubquery}
        FROM products p
        LEFT JOIN categories c ON p.category_id = c.id
        WHERE p.id = $1`,
@@ -209,6 +220,7 @@ export const getRelatedProducts = async (req: Request, res: Response) => {
 
 // Admin: Create product
 export const createProduct = async (req: Request, res: Response) => {
+  const client = await pool.connect();
   try {
     const {
       category_id,
@@ -225,6 +237,7 @@ export const createProduct = async (req: Request, res: Response) => {
       masa_penyimpanan,
       jenis_kulit,
       is_featured,
+      variants,
     } = req.body;
 
     // Validasi
@@ -234,7 +247,9 @@ export const createProduct = async (req: Request, res: Response) => {
       });
     }
 
-    const result = await query(
+    await client.query('BEGIN');
+
+    const result = await client.query(
       `INSERT INTO products
        (category_id, name, slug, description, price, discount_price, stock, unit, image_url, images, brand, masa_penyimpanan, jenis_kulit, is_featured)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
@@ -242,23 +257,73 @@ export const createProduct = async (req: Request, res: Response) => {
       [category_id, name, slug, description, price, discount_price, stock, unit || 'porsi', image_url, Array.isArray(images) ? images : [], brand, masa_penyimpanan, jenis_kulit, is_featured || false]
     );
 
+    const product = result.rows[0];
+
+    if (Array.isArray(variants) && variants.length > 0) {
+      await insertVariants(client, product.id, variants);
+    }
+
+    const variantsRes = await client.query(
+      `SELECT * FROM product_variants WHERE product_id = $1 ORDER BY display_order ASC, id ASC`,
+      [product.id]
+    );
+
+    await client.query('COMMIT');
+
     res.status(201).json({
       message: 'Produk berhasil ditambahkan',
-      data: result.rows[0],
+      data: { ...product, variants: variantsRes.rows },
     });
   } catch (error: any) {
+    await client.query('ROLLBACK');
     console.error('Create product error:', error);
-    
+
     if (error.code === '23505') {
       return res.status(400).json({ message: 'Slug produk sudah digunakan' });
     }
-    
+
     res.status(500).json({ message: 'Terjadi kesalahan server' });
+  } finally {
+    client.release();
   }
 };
 
+// Insert a list of variants for a product. Caller manages the transaction.
+async function insertVariants(client: any, productId: number, variants: any[]) {
+  const cleaned = variants
+    .map((v: any, idx: number) => ({
+      name: typeof v.name === 'string' ? v.name.trim() : '',
+      price: v.price !== undefined && v.price !== null && v.price !== '' ? Number(v.price) : NaN,
+      discount_price:
+        v.discount_price !== undefined && v.discount_price !== null && v.discount_price !== ''
+          ? Number(v.discount_price)
+          : null,
+      stock: v.stock !== undefined && v.stock !== null && v.stock !== '' ? parseInt(v.stock) : 0,
+      image_url: v.image_url || null,
+      display_order: v.display_order !== undefined ? Number(v.display_order) : idx,
+    }))
+    .filter((v) => v.name && !Number.isNaN(v.price) && v.price >= 0);
+
+  if (cleaned.length === 0) return;
+
+  const placeholders: string[] = [];
+  const params: any[] = [];
+  let p = 1;
+  for (const v of cleaned) {
+    placeholders.push(`($${p}, $${p + 1}, $${p + 2}, $${p + 3}, $${p + 4}, $${p + 5}, $${p + 6})`);
+    params.push(productId, v.name, v.price, v.discount_price, v.stock, v.image_url, v.display_order);
+    p += 7;
+  }
+  await client.query(
+    `INSERT INTO product_variants (product_id, name, price, discount_price, stock, image_url, display_order)
+     VALUES ${placeholders.join(', ')}`,
+    params
+  );
+}
+
 // Admin: Update product
 export const updateProduct = async (req: Request, res: Response) => {
+  const client = await pool.connect();
   try {
     const { id } = req.params;
     const {
@@ -277,9 +342,12 @@ export const updateProduct = async (req: Request, res: Response) => {
       jenis_kulit,
       is_available,
       is_featured,
+      variants,
     } = req.body;
 
-    const result = await query(
+    await client.query('BEGIN');
+
+    const result = await client.query(
       `UPDATE products
        SET category_id = COALESCE($1, category_id),
            name = COALESCE($2, name),
@@ -302,21 +370,40 @@ export const updateProduct = async (req: Request, res: Response) => {
     );
 
     if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ message: 'Produk tidak ditemukan' });
     }
 
+    // Variants: replace strategy when array provided. Skipped when undefined (no change).
+    if (Array.isArray(variants)) {
+      await client.query('DELETE FROM product_variants WHERE product_id = $1', [id]);
+      if (variants.length > 0) {
+        await insertVariants(client, Number(id), variants);
+      }
+    }
+
+    const variantsRes = await client.query(
+      `SELECT * FROM product_variants WHERE product_id = $1 ORDER BY display_order ASC, id ASC`,
+      [id]
+    );
+
+    await client.query('COMMIT');
+
     res.json({
       message: 'Produk berhasil diupdate',
-      data: result.rows[0],
+      data: { ...result.rows[0], variants: variantsRes.rows },
     });
   } catch (error: any) {
+    await client.query('ROLLBACK');
     console.error('Update product error:', error);
-    
+
     if (error.code === '23505') {
       return res.status(400).json({ message: 'Slug produk sudah digunakan' });
     }
-    
+
     res.status(500).json({ message: 'Terjadi kesalahan server' });
+  } finally {
+    client.release();
   }
 };
 

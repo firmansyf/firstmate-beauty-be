@@ -74,13 +74,16 @@ CREATE TABLE IF NOT EXISTS cart_items (
     id SERIAL PRIMARY KEY,
     cart_id INTEGER NOT NULL REFERENCES carts(id) ON DELETE CASCADE,
     product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    variant_id INTEGER,
     quantity INTEGER NOT NULL DEFAULT 1,
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE cart_items ADD COLUMN IF NOT EXISTS variant_id INTEGER;
 CREATE INDEX IF NOT EXISTS idx_cart_items_cart_id ON cart_items(cart_id);
 CREATE INDEX IF NOT EXISTS idx_cart_items_product_id ON cart_items(product_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_cart_items_cart_product ON cart_items(cart_id, product_id);
+DROP INDEX IF EXISTS idx_cart_items_cart_product;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cart_items_cart_product_variant ON cart_items (cart_id, product_id, COALESCE(variant_id, 0));
 
 -- 6. ORDERS
 CREATE TABLE IF NOT EXISTS orders (
@@ -125,14 +128,33 @@ CREATE TABLE IF NOT EXISTS order_items (
     product_id INTEGER NOT NULL REFERENCES products(id),
     product_name VARCHAR(255) NOT NULL,
     product_image VARCHAR(500),
+    variant_id INTEGER,
+    variant_name VARCHAR(255),
     price DECIMAL(12, 2) NOT NULL,
     quantity INTEGER NOT NULL DEFAULT 1,
     subtotal DECIMAL(12, 2) NOT NULL,
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS variant_id INTEGER;
+ALTER TABLE order_items ADD COLUMN IF NOT EXISTS variant_name VARCHAR(255);
 CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_product_id ON order_items(product_id);
+
+-- 7a. PRODUCT_VARIANTS
+CREATE TABLE IF NOT EXISTS product_variants (
+    id SERIAL PRIMARY KEY,
+    product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    price DECIMAL(12, 2) NOT NULL,
+    discount_price DECIMAL(12, 2),
+    stock INTEGER NOT NULL DEFAULT 0,
+    image_url VARCHAR(500),
+    display_order INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_product_variants_product_id ON product_variants(product_id);
+CREATE INDEX IF NOT EXISTS idx_product_variants_display_order ON product_variants(product_id, display_order);
 
 -- 8. OTP_VERIFICATIONS
 CREATE TABLE IF NOT EXISTS otp_verifications (

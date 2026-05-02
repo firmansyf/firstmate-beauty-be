@@ -17,12 +17,18 @@ export const getCart = async (req: Request, res: Response) => {
 
     const cartId = cart.rows[0].id;
 
-    // Get cart items with product details
+    // Get cart items with product + variant details
     const items = await query(
-      `SELECT ci.*, 
-              p.name, p.slug, p.price, p.discount_price, p.image_url, p.stock, p.is_available
+      `SELECT ci.*,
+              p.name, p.slug, p.image_url AS product_image_url, p.is_available,
+              COALESCE(v.price, p.price) AS price,
+              COALESCE(v.discount_price, p.discount_price) AS discount_price,
+              COALESCE(v.image_url, p.image_url) AS image_url,
+              COALESCE(v.stock, p.stock) AS stock,
+              v.name AS variant_name
        FROM cart_items ci
        JOIN products p ON ci.product_id = p.id
+       LEFT JOIN product_variants v ON ci.variant_id = v.id
        WHERE ci.cart_id = $1`,
       [cartId]
     );
@@ -30,7 +36,7 @@ export const getCart = async (req: Request, res: Response) => {
     // Calculate totals
     let subtotal = 0;
     items.rows.forEach(item => {
-      const itemPrice = item.discount_price || item.price;
+      const itemPrice = Number(item.discount_price || item.price);
       subtotal += itemPrice * item.quantity;
     });
 
@@ -56,11 +62,11 @@ export const getCart = async (req: Request, res: Response) => {
 export const addToCart = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.userId;
-    const { product_id, quantity, notes } = req.body;
+    const { product_id, variant_id, quantity, notes } = req.body;
 
     if (!product_id || !quantity) {
-      return res.status(400).json({ 
-        message: 'Product ID dan quantity wajib diisi' 
+      return res.status(400).json({
+        message: 'Product ID dan quantity wajib diisi'
       });
     }
 
@@ -74,9 +80,34 @@ export const addToCart = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Produk tidak tersedia' });
     }
 
-    if (product.rows[0].stock < quantity) {
-      return res.status(400).json({ 
-        message: `Stok tidak cukup. Stok tersedia: ${product.rows[0].stock}` 
+    // Resolve effective stock — variant overrides base when provided
+    let availableStock: number = product.rows[0].stock;
+    let resolvedVariantId: number | null = null;
+
+    if (variant_id !== undefined && variant_id !== null) {
+      const variant = await query(
+        'SELECT * FROM product_variants WHERE id = $1 AND product_id = $2',
+        [variant_id, product_id]
+      );
+      if (variant.rows.length === 0) {
+        return res.status(400).json({ message: 'Varian tidak ditemukan untuk produk ini' });
+      }
+      availableStock = variant.rows[0].stock;
+      resolvedVariantId = variant.rows[0].id;
+    } else {
+      // If product has variants, require selection
+      const hasVariants = await query(
+        'SELECT 1 FROM product_variants WHERE product_id = $1 LIMIT 1',
+        [product_id]
+      );
+      if (hasVariants.rows.length > 0) {
+        return res.status(400).json({ message: 'Silakan pilih varian terlebih dahulu' });
+      }
+    }
+
+    if (availableStock < quantity) {
+      return res.status(400).json({
+        message: `Stok tidak cukup. Stok tersedia: ${availableStock}`
       });
     }
 
@@ -90,37 +121,39 @@ export const addToCart = async (req: Request, res: Response) => {
 
     const cartId = cart.rows[0].id;
 
-    // Check if item already in cart
+    // Check if item already in cart (same product + variant)
     const existingItem = await query(
-      'SELECT * FROM cart_items WHERE cart_id = $1 AND product_id = $2',
-      [cartId, product_id]
+      `SELECT * FROM cart_items
+       WHERE cart_id = $1 AND product_id = $2
+         AND COALESCE(variant_id, 0) = COALESCE($3::int, 0)`,
+      [cartId, product_id, resolvedVariantId]
     );
 
     let result;
     if (existingItem.rows.length > 0) {
       // Update quantity
       const newQuantity = existingItem.rows[0].quantity + quantity;
-      
-      if (product.rows[0].stock < newQuantity) {
-        return res.status(400).json({ 
-          message: `Stok tidak cukup. Stok tersedia: ${product.rows[0].stock}` 
+
+      if (availableStock < newQuantity) {
+        return res.status(400).json({
+          message: `Stok tidak cukup. Stok tersedia: ${availableStock}`
         });
       }
 
       result = await query(
-        `UPDATE cart_items 
+        `UPDATE cart_items
          SET quantity = $1, notes = COALESCE($2, notes)
-         WHERE cart_id = $3 AND product_id = $4
+         WHERE id = $3
          RETURNING *`,
-        [newQuantity, notes, cartId, product_id]
+        [newQuantity, notes, existingItem.rows[0].id]
       );
     } else {
       // Insert new item
       result = await query(
-        `INSERT INTO cart_items (cart_id, product_id, quantity, notes)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO cart_items (cart_id, product_id, variant_id, quantity, notes)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING *`,
-        [cartId, product_id, quantity, notes]
+        [cartId, product_id, resolvedVariantId, quantity, notes]
       );
     }
 
@@ -141,12 +174,14 @@ export const updateCartItem = async (req: Request, res: Response) => {
     const { id } = req.params;
     const { quantity, notes } = req.body;
 
-    // Verify cart ownership
+    // Verify cart ownership; resolve effective stock from variant or product
     const cartItem = await query(
-      `SELECT ci.*, c.user_id, p.stock
+      `SELECT ci.*, c.user_id,
+              COALESCE(v.stock, p.stock) AS effective_stock
        FROM cart_items ci
        JOIN carts c ON ci.cart_id = c.id
        JOIN products p ON ci.product_id = p.id
+       LEFT JOIN product_variants v ON ci.variant_id = v.id
        WHERE ci.id = $1`,
       [id]
     );
@@ -159,9 +194,10 @@ export const updateCartItem = async (req: Request, res: Response) => {
       return res.status(403).json({ message: 'Akses ditolak' });
     }
 
-    if (quantity && cartItem.rows[0].stock < quantity) {
-      return res.status(400).json({ 
-        message: `Stok tidak cukup. Stok tersedia: ${cartItem.rows[0].stock}` 
+    const effectiveStock = Number(cartItem.rows[0].effective_stock);
+    if (quantity && effectiveStock < quantity) {
+      return res.status(400).json({
+        message: `Stok tidak cukup. Stok tersedia: ${effectiveStock}`
       });
     }
 

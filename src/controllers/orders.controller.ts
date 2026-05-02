@@ -33,12 +33,20 @@ export const createOrder = async (req: Request, res: Response) => {
 
     await client.query('BEGIN');
 
-    // Get cart with items in one query
+    // Get cart with items + variant info in one query
     const cartItems = await client.query(
-      `SELECT ci.*, p.name, p.price, p.discount_price, p.image_url, p.stock, p.is_available
+      `SELECT ci.*,
+              p.name, p.is_available,
+              p.image_url AS product_image_url,
+              COALESCE(v.price, p.price) AS price,
+              COALESCE(v.discount_price, p.discount_price) AS discount_price,
+              COALESCE(v.image_url, p.image_url) AS image_url,
+              COALESCE(v.stock, p.stock) AS stock,
+              v.name AS variant_name
        FROM carts c
        JOIN cart_items ci ON ci.cart_id = c.id
        JOIN products p ON ci.product_id = p.id
+       LEFT JOIN product_variants v ON ci.variant_id = v.id
        WHERE c.user_id = $1`,
       [userId]
     );
@@ -54,10 +62,11 @@ export const createOrder = async (req: Request, res: Response) => {
         await client.query('ROLLBACK');
         return res.status(400).json({ message: `Produk ${item.name} tidak tersedia` });
       }
-      if (item.stock < item.quantity) {
+      const label = item.variant_name ? `${item.name} (${item.variant_name})` : item.name;
+      if (Number(item.stock) < item.quantity) {
         await client.query('ROLLBACK');
         return res.status(400).json({
-          message: `Stok ${item.name} tidak cukup. Stok tersedia: ${item.stock}`
+          message: `Stok ${label} tidak cukup. Stok tersedia: ${item.stock}`
         });
       }
     }
@@ -65,7 +74,7 @@ export const createOrder = async (req: Request, res: Response) => {
     // Calculate subtotal
     let subtotal = 0;
     cartItems.rows.forEach(item => {
-      const itemPrice = item.discount_price || item.price;
+      const itemPrice = Number(item.discount_price || item.price);
       subtotal += itemPrice * item.quantity;
     });
 
@@ -85,33 +94,61 @@ export const createOrder = async (req: Request, res: Response) => {
 
     const order = orderResult.rows[0];
 
-    // Batch insert order items
+    // Batch insert order items (snapshot variant info)
     const itemValues: any[] = [];
     const itemParams: any[] = [];
     let paramIdx = 1;
     for (const item of cartItems.rows) {
-      const itemPrice = item.discount_price || item.price;
+      const itemPrice = Number(item.discount_price || item.price);
       const itemSubtotal = itemPrice * item.quantity;
-      itemValues.push(`($${paramIdx}, $${paramIdx+1}, $${paramIdx+2}, $${paramIdx+3}, $${paramIdx+4}, $${paramIdx+5}, $${paramIdx+6}, $${paramIdx+7})`);
-      itemParams.push(order.id, item.product_id, item.name, item.image_url, itemPrice, item.quantity, itemSubtotal, item.notes);
-      paramIdx += 8;
+      itemValues.push(`($${paramIdx}, $${paramIdx+1}, $${paramIdx+2}, $${paramIdx+3}, $${paramIdx+4}, $${paramIdx+5}, $${paramIdx+6}, $${paramIdx+7}, $${paramIdx+8}, $${paramIdx+9})`);
+      itemParams.push(
+        order.id,
+        item.product_id,
+        item.name,
+        item.image_url,
+        item.variant_id || null,
+        item.variant_name || null,
+        itemPrice,
+        item.quantity,
+        itemSubtotal,
+        item.notes
+      );
+      paramIdx += 10;
     }
     await client.query(
-      `INSERT INTO order_items (order_id, product_id, product_name, product_image, price, quantity, subtotal, notes)
+      `INSERT INTO order_items (order_id, product_id, product_name, product_image, variant_id, variant_name, price, quantity, subtotal, notes)
        VALUES ${itemValues.join(', ')}`,
       itemParams
     );
 
-    // Batch update product stock
-    const stockValues = cartItems.rows.map((_, i) => `($${i * 2 + 1}::int, $${i * 2 + 2}::int)`).join(', ');
-    const stockParams: any[] = [];
-    cartItems.rows.forEach(item => stockParams.push(item.product_id, item.quantity));
-    await client.query(
-      `UPDATE products SET stock = products.stock - data.qty
-       FROM (VALUES ${stockValues}) AS data(pid, qty)
-       WHERE products.id = data.pid`,
-      stockParams
-    );
+    // Decrement stock — variant.stock when variant_id present, else products.stock
+    const variantDecs = cartItems.rows.filter((i) => i.variant_id);
+    const productDecs = cartItems.rows.filter((i) => !i.variant_id);
+
+    if (productDecs.length > 0) {
+      const stockValues = productDecs.map((_, i) => `($${i * 2 + 1}::int, $${i * 2 + 2}::int)`).join(', ');
+      const stockParams: any[] = [];
+      productDecs.forEach(item => stockParams.push(item.product_id, item.quantity));
+      await client.query(
+        `UPDATE products SET stock = products.stock - data.qty
+         FROM (VALUES ${stockValues}) AS data(pid, qty)
+         WHERE products.id = data.pid`,
+        stockParams
+      );
+    }
+
+    if (variantDecs.length > 0) {
+      const variantStockValues = variantDecs.map((_, i) => `($${i * 2 + 1}::int, $${i * 2 + 2}::int)`).join(', ');
+      const variantStockParams: any[] = [];
+      variantDecs.forEach(item => variantStockParams.push(item.variant_id, item.quantity));
+      await client.query(
+        `UPDATE product_variants SET stock = product_variants.stock - data.qty
+         FROM (VALUES ${variantStockValues}) AS data(vid, qty)
+         WHERE product_variants.id = data.vid`,
+        variantStockParams
+      );
+    }
 
     // Clear cart items
     const cartId = cartItems.rows[0].cart_id;
@@ -234,21 +271,36 @@ export const cancelOrder = async (req: Request, res: Response) => {
       });
     }
 
-    // Batch restore product stock
+    // Batch restore stock — variant.stock for variant rows, products.stock otherwise
     const items = await client.query(
-      'SELECT product_id, quantity FROM order_items WHERE order_id = $1',
+      'SELECT product_id, variant_id, quantity FROM order_items WHERE order_id = $1',
       [id]
     );
 
-    if (items.rows.length > 0) {
-      const stockValues = items.rows.map((_, i) => `($${i * 2 + 1}::int, $${i * 2 + 2}::int)`).join(', ');
+    const variantRows = items.rows.filter((it: any) => it.variant_id);
+    const productRows = items.rows.filter((it: any) => !it.variant_id);
+
+    if (productRows.length > 0) {
+      const stockValues = productRows.map((_: any, i: number) => `($${i * 2 + 1}::int, $${i * 2 + 2}::int)`).join(', ');
       const stockParams: any[] = [];
-      items.rows.forEach(item => stockParams.push(item.product_id, item.quantity));
+      productRows.forEach((item: any) => stockParams.push(item.product_id, item.quantity));
       await client.query(
         `UPDATE products SET stock = products.stock + data.qty
          FROM (VALUES ${stockValues}) AS data(pid, qty)
          WHERE products.id = data.pid`,
         stockParams
+      );
+    }
+
+    if (variantRows.length > 0) {
+      const variantStockValues = variantRows.map((_: any, i: number) => `($${i * 2 + 1}::int, $${i * 2 + 2}::int)`).join(', ');
+      const variantStockParams: any[] = [];
+      variantRows.forEach((item: any) => variantStockParams.push(item.variant_id, item.quantity));
+      await client.query(
+        `UPDATE product_variants SET stock = product_variants.stock + data.qty
+         FROM (VALUES ${variantStockValues}) AS data(vid, qty)
+         WHERE product_variants.id = data.vid`,
+        variantStockParams
       );
     }
 
