@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS products (
     stock INTEGER NOT NULL DEFAULT 0,
     unit VARCHAR(50) DEFAULT 'porsi',
     image_url VARCHAR(500),
+    images TEXT[] DEFAULT '{}',
     brand VARCHAR(100),
     masa_penyimpanan VARCHAR(100),
     jenis_kulit VARCHAR(255),
@@ -48,6 +49,7 @@ CREATE TABLE IF NOT EXISTS products (
     rating DECIMAL(3, 2) DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE products ADD COLUMN IF NOT EXISTS images TEXT[] DEFAULT '{}';
 ALTER TABLE products ADD COLUMN IF NOT EXISTS brand VARCHAR(100);
 ALTER TABLE products ADD COLUMN IF NOT EXISTS masa_penyimpanan VARCHAR(100);
 ALTER TABLE products ADD COLUMN IF NOT EXISTS jenis_kulit VARCHAR(255);

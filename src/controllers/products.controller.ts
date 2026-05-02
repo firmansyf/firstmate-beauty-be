@@ -220,6 +220,7 @@ export const createProduct = async (req: Request, res: Response) => {
       stock,
       unit,
       image_url,
+      images,
       brand,
       masa_penyimpanan,
       jenis_kulit,
@@ -235,10 +236,10 @@ export const createProduct = async (req: Request, res: Response) => {
 
     const result = await query(
       `INSERT INTO products
-       (category_id, name, slug, description, price, discount_price, stock, unit, image_url, brand, masa_penyimpanan, jenis_kulit, is_featured)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+       (category_id, name, slug, description, price, discount_price, stock, unit, image_url, images, brand, masa_penyimpanan, jenis_kulit, is_featured)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
-      [category_id, name, slug, description, price, discount_price, stock, unit || 'porsi', image_url, brand, masa_penyimpanan, jenis_kulit, is_featured || false]
+      [category_id, name, slug, description, price, discount_price, stock, unit || 'porsi', image_url, Array.isArray(images) ? images : [], brand, masa_penyimpanan, jenis_kulit, is_featured || false]
     );
 
     res.status(201).json({
@@ -270,6 +271,7 @@ export const updateProduct = async (req: Request, res: Response) => {
       stock,
       unit,
       image_url,
+      images,
       brand,
       masa_penyimpanan,
       jenis_kulit,
@@ -288,14 +290,15 @@ export const updateProduct = async (req: Request, res: Response) => {
            stock = COALESCE($7, stock),
            unit = COALESCE($8, unit),
            image_url = COALESCE($9, image_url),
-           brand = COALESCE($10, brand),
-           masa_penyimpanan = COALESCE($11, masa_penyimpanan),
-           jenis_kulit = COALESCE($12, jenis_kulit),
-           is_available = COALESCE($13, is_available),
-           is_featured = COALESCE($14, is_featured)
-       WHERE id = $15
+           images = COALESCE($10, images),
+           brand = COALESCE($11, brand),
+           masa_penyimpanan = COALESCE($12, masa_penyimpanan),
+           jenis_kulit = COALESCE($13, jenis_kulit),
+           is_available = COALESCE($14, is_available),
+           is_featured = COALESCE($15, is_featured)
+       WHERE id = $16
        RETURNING *`,
-      [category_id, name, slug, description, price, discount_price, stock, unit, image_url, brand, masa_penyimpanan, jenis_kulit, is_available, is_featured, id]
+      [category_id, name, slug, description, price, discount_price, stock, unit, image_url, Array.isArray(images) ? images : null, brand, masa_penyimpanan, jenis_kulit, is_available, is_featured, id]
     );
 
     if (result.rows.length === 0) {

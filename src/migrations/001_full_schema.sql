@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS products (
     stock INTEGER NOT NULL DEFAULT 0,
     unit VARCHAR(50) DEFAULT 'porsi',
     image_url VARCHAR(500),
+    images TEXT[] DEFAULT '{}',
     brand VARCHAR(100),
     masa_penyimpanan VARCHAR(100),
     jenis_kulit VARCHAR(255),
