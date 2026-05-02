@@ -220,22 +220,25 @@ export const createProduct = async (req: Request, res: Response) => {
       stock,
       unit,
       image_url,
+      brand,
+      masa_penyimpanan,
+      jenis_kulit,
       is_featured,
     } = req.body;
 
     // Validasi
     if (!name || !slug || !price || !stock) {
-      return res.status(400).json({ 
-        message: 'Nama, slug, harga, dan stok wajib diisi' 
+      return res.status(400).json({
+        message: 'Nama, slug, harga, dan stok wajib diisi'
       });
     }
 
     const result = await query(
-      `INSERT INTO products 
-       (category_id, name, slug, description, price, discount_price, stock, unit, image_url, is_featured)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO products
+       (category_id, name, slug, description, price, discount_price, stock, unit, image_url, brand, masa_penyimpanan, jenis_kulit, is_featured)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
-      [category_id, name, slug, description, price, discount_price, stock, unit || 'porsi', image_url, is_featured || false]
+      [category_id, name, slug, description, price, discount_price, stock, unit || 'porsi', image_url, brand, masa_penyimpanan, jenis_kulit, is_featured || false]
     );
 
     res.status(201).json({
@@ -267,6 +270,9 @@ export const updateProduct = async (req: Request, res: Response) => {
       stock,
       unit,
       image_url,
+      brand,
+      masa_penyimpanan,
+      jenis_kulit,
       is_available,
       is_featured,
     } = req.body;
@@ -282,11 +288,14 @@ export const updateProduct = async (req: Request, res: Response) => {
            stock = COALESCE($7, stock),
            unit = COALESCE($8, unit),
            image_url = COALESCE($9, image_url),
-           is_available = COALESCE($10, is_available),
-           is_featured = COALESCE($11, is_featured)
-       WHERE id = $12
+           brand = COALESCE($10, brand),
+           masa_penyimpanan = COALESCE($11, masa_penyimpanan),
+           jenis_kulit = COALESCE($12, jenis_kulit),
+           is_available = COALESCE($13, is_available),
+           is_featured = COALESCE($14, is_featured)
+       WHERE id = $15
        RETURNING *`,
-      [category_id, name, slug, description, price, discount_price, stock, unit, image_url, is_available, is_featured, id]
+      [category_id, name, slug, description, price, discount_price, stock, unit, image_url, brand, masa_penyimpanan, jenis_kulit, is_available, is_featured, id]
     );
 
     if (result.rows.length === 0) {

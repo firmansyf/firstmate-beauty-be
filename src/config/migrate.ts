@@ -40,17 +40,24 @@ CREATE TABLE IF NOT EXISTS products (
     stock INTEGER NOT NULL DEFAULT 0,
     unit VARCHAR(50) DEFAULT 'porsi',
     image_url VARCHAR(500),
+    brand VARCHAR(100),
+    masa_penyimpanan VARCHAR(100),
+    jenis_kulit VARCHAR(255),
     is_available BOOLEAN DEFAULT TRUE,
     is_featured BOOLEAN DEFAULT FALSE,
     rating DECIMAL(3, 2) DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+ALTER TABLE products ADD COLUMN IF NOT EXISTS brand VARCHAR(100);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS masa_penyimpanan VARCHAR(100);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS jenis_kulit VARCHAR(255);
 CREATE INDEX IF NOT EXISTS idx_products_slug ON products(slug);
 CREATE INDEX IF NOT EXISTS idx_products_category_id ON products(category_id);
 CREATE INDEX IF NOT EXISTS idx_products_is_available ON products(is_available);
 CREATE INDEX IF NOT EXISTS idx_products_is_featured ON products(is_featured);
 CREATE INDEX IF NOT EXISTS idx_products_available_created ON products(is_available, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_products_available_featured ON products(is_available, is_featured);
+CREATE INDEX IF NOT EXISTS idx_products_brand ON products(brand);
 
 -- 4. CARTS
 CREATE TABLE IF NOT EXISTS carts (
