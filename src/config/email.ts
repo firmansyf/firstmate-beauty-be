@@ -5,7 +5,7 @@ dotenv.config();
 
 export const sendOTPEmail = async (email: string, otpCode: string): Promise<void> => {
   const apiKey = process.env.BREVO_API_KEY;
-  const from = process.env.SMTP_FROM || 'noreply@alfath-skin.com';
+  const from = process.env.SMTP_FROM || 'noreply@firstmate-beauty.com';
 
   if (!apiKey) {
     throw new Error('BREVO_API_KEY environment variable is not set');
@@ -42,7 +42,7 @@ export const sendOTPEmail = async (email: string, otpCode: string): Promise<void
     {
       sender: { name: 'FirstMate Beauty', email: from },
       to: [{ email }],
-      subject: 'Kode Verifikasi OTP - Al-fath Skin',
+      subject: 'Kode Verifikasi OTP - FirstMate Beauty',
       htmlContent: html,
     },
     {
