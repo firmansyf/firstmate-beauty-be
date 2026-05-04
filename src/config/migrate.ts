@@ -53,6 +53,7 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS images TEXT[] DEFAULT '{}';
 ALTER TABLE products ADD COLUMN IF NOT EXISTS brand VARCHAR(100);
 ALTER TABLE products ADD COLUMN IF NOT EXISTS masa_penyimpanan VARCHAR(100);
 ALTER TABLE products ADD COLUMN IF NOT EXISTS jenis_kulit VARCHAR(255);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS referral_link VARCHAR(500);
 CREATE INDEX IF NOT EXISTS idx_products_slug ON products(slug);
 CREATE INDEX IF NOT EXISTS idx_products_category_id ON products(category_id);
 CREATE INDEX IF NOT EXISTS idx_products_is_available ON products(is_available);
