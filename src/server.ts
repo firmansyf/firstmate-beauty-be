@@ -7,7 +7,6 @@ import compression from 'compression';
 import dotenv from 'dotenv';
 import routes from './routes';
 import { runMigrations } from './config/migrate';
-import { initMinio } from './config/minio';
 
 // Load environment variables
 dotenv.config();
@@ -72,9 +71,6 @@ const start = async () => {
   try {
     // Auto-run database migrations
     await runMigrations();
-
-    // Auto-create MinIO bucket + set public policy
-    await initMinio();
 
     // Start server
     app.listen(PORT, () => {

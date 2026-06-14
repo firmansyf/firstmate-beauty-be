@@ -8,6 +8,7 @@ import {
   getAllOrders,
   getOrderDetailAdmin,
   updateOrderStatus,
+  uploadPaymentProof,
 } from '../controllers/orders.controller';
 import { authenticateToken, authorizeRole } from '../middleware/auth';
 
@@ -18,6 +19,7 @@ router.post('/', authenticateToken, createOrder);
 router.get('/my-orders', authenticateToken, getUserOrders);
 router.get('/:id', authenticateToken, getOrderDetail);
 router.post('/:id/cancel', authenticateToken, cancelOrder);
+router.post('/:id/payment-proof', authenticateToken, uploadPaymentProof);
 
 // Admin routes
 router.get('/admin/all', authenticateToken, authorizeRole('admin'), getAllOrders);

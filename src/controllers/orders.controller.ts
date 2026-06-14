@@ -321,6 +321,64 @@ export const cancelOrder = async (req: Request, res: Response) => {
   }
 };
 
+// Customer: upload QRIS payment proof → moves order to 'waiting_confirmation'
+export const uploadPaymentProof = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    const { id } = req.params;
+    const { payment_proof_url } = req.body;
+
+    if (!payment_proof_url) {
+      return res.status(400).json({ message: 'Bukti pembayaran wajib diunggah' });
+    }
+
+    const orderResult = await query(
+      'SELECT id, order_number, status, payment_status, recipient_name FROM orders WHERE id = $1 AND user_id = $2',
+      [id, userId]
+    );
+
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Pesanan tidak ditemukan' });
+    }
+
+    const order = orderResult.rows[0];
+
+    if (order.status === 'cancelled') {
+      return res.status(400).json({ message: 'Pesanan sudah dibatalkan' });
+    }
+
+    if (order.payment_status === 'paid') {
+      return res.status(400).json({ message: 'Pesanan sudah dibayar' });
+    }
+
+    const result = await query(
+      `UPDATE orders
+       SET payment_proof_url = $1,
+           payment_proof_uploaded_at = CURRENT_TIMESTAMP,
+           payment_status = 'waiting_confirmation'
+       WHERE id = $2
+       RETURNING *`,
+      [payment_proof_url, id]
+    );
+
+    // Notify admin to verify the payment
+    createNotification(
+      'payment_proof_uploaded',
+      'Bukti Pembayaran Diterima',
+      `Pesanan ${order.order_number} dari ${order.recipient_name} mengunggah bukti pembayaran. Menunggu verifikasi.`,
+      { order_id: order.id, order_number: order.order_number }
+    );
+
+    res.json({
+      message: 'Bukti pembayaran berhasil dikirim. Menunggu verifikasi admin.',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Upload payment proof error:', error);
+    res.status(500).json({ message: 'Terjadi kesalahan server' });
+  }
+};
+
 // Admin: Get all orders
 export const getAllOrders = async (req: Request, res: Response) => {
   try {

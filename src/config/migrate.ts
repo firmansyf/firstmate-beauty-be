@@ -101,20 +101,25 @@ CREATE TABLE IF NOT EXISTS orders (
     whatsapp_number VARCHAR(20),
     status VARCHAR(20) NOT NULL DEFAULT 'pending'
         CHECK (status IN ('pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled')),
-    payment_status VARCHAR(20) NOT NULL DEFAULT 'pending'
-        CHECK (payment_status IN ('pending', 'paid', 'expired', 'refunded')),
+    payment_status VARCHAR(30) NOT NULL DEFAULT 'pending',
     admin_notes TEXT,
     confirmed_at TIMESTAMP,
     paid_at TIMESTAMP,
     shipped_at TIMESTAMP,
     delivered_at TIMESTAMP,
     cancelled_at TIMESTAMP,
-    snap_token TEXT,
-    midtrans_order_id VARCHAR(60),
+    payment_proof_url VARCHAR(500),
+    payment_proof_uploaded_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS snap_token TEXT;
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS midtrans_order_id VARCHAR(60);
+-- Payment is now manual QRIS: customer uploads proof, admin verifies.
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_proof_url VARCHAR(500);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_proof_uploaded_at TIMESTAMP;
+-- Widen + reset payment_status check to include 'waiting_confirmation' (idempotent: drop then add each boot)
+ALTER TABLE orders ALTER COLUMN payment_status TYPE VARCHAR(30);
+ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_payment_status_check;
+ALTER TABLE orders ADD CONSTRAINT orders_payment_status_check
+    CHECK (payment_status IN ('pending', 'waiting_confirmation', 'paid', 'expired', 'refunded'));
 CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_order_number ON orders(order_number);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
@@ -242,6 +247,13 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
 CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at DESC);
+
+-- 13. SETTINGS (key/value store — e.g. qris_image_url for manual QRIS payment)
+CREATE TABLE IF NOT EXISTS settings (
+    key VARCHAR(100) PRIMARY KEY,
+    value TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 `;
 
 export const runMigrations = async (): Promise<void> => {

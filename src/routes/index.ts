@@ -11,9 +11,9 @@ import dashboardRoutes from './dashboard.routes';
 import refundRoutes from './refunds.routes';
 import bannerRoutes from './banners.routes';
 import otpRoutes from './otp.routes';
-import paymentRoutes from './payment.routes';
 import feedbackRoutes from './feedback.routes';
 import notificationRoutes from './notifications.routes';
+import settingsRoutes from './settings.routes';
 
 const router = Router();
 
@@ -28,9 +28,9 @@ router.use('/users', userRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/refunds', refundRoutes);
 router.use('/banners', bannerRoutes);
-router.use('/payment', paymentRoutes);
 router.use('/feedback', feedbackRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/settings', settingsRoutes);
 
 // Health check
 router.get('/health', (req, res) => {

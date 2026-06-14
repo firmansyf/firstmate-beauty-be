@@ -1,8 +1,12 @@
 import { Request, Response } from 'express';
 import multer from 'multer';
-import { uploadToMinio, deleteFromMinio, getKeyFromUrl } from '../config/minio';
+import {
+  uploadToCloudinary,
+  deleteFromCloudinary,
+  getPublicIdFromUrl,
+} from '../config/cloudinary';
 
-// Use memory storage instead of disk - files go to MinIO
+// Use memory storage - files are streamed to Cloudinary, not written to disk
 const storage = multer.memoryStorage();
 
 // File filter - only allow images
@@ -16,7 +20,7 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
   }
 };
 
-// Configure multer upload (memory storage for MinIO)
+// Configure multer upload (memory storage for Cloudinary)
 export const upload = multer({
   storage,
   fileFilter,
@@ -25,24 +29,24 @@ export const upload = multer({
   },
 });
 
-// Upload single product image to MinIO
+// Upload single product image to Cloudinary
 export const uploadProductImage = async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'Tidak ada file yang diupload' });
     }
 
-    const ext = req.file.originalname.split('.').pop() || 'jpg';
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    const key = `products/product-${uniqueSuffix}.${ext}`;
-
-    const imageUrl = await uploadToMinio(req.file.buffer, key, req.file.mimetype);
+    const { url, publicId } = await uploadToCloudinary(
+      req.file.buffer,
+      req.file.mimetype,
+      'products'
+    );
 
     res.json({
       message: 'Gambar berhasil diupload',
       data: {
-        filename: key,
-        url: imageUrl,
+        filename: publicId,
+        url,
         size: req.file.size,
         mimetype: req.file.mimetype,
       },
@@ -53,7 +57,35 @@ export const uploadProductImage = async (req: Request, res: Response) => {
   }
 };
 
-// Delete product image from MinIO
+// Upload a QRIS payment proof to Cloudinary (any authenticated user)
+export const uploadPaymentProof = async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Tidak ada file yang diupload' });
+    }
+
+    const { url, publicId } = await uploadToCloudinary(
+      req.file.buffer,
+      req.file.mimetype,
+      'payment-proofs'
+    );
+
+    res.json({
+      message: 'Bukti pembayaran berhasil diupload',
+      data: {
+        filename: publicId,
+        url,
+        size: req.file.size,
+        mimetype: req.file.mimetype,
+      },
+    });
+  } catch (error) {
+    console.error('Upload payment proof error:', error);
+    res.status(500).json({ message: 'Gagal mengupload bukti pembayaran' });
+  }
+};
+
+// Delete product image from Cloudinary
 export const deleteProductImage = async (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
@@ -62,10 +94,16 @@ export const deleteProductImage = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Nama file tidak diberikan' });
     }
 
-    // Support both key format (products/product-xxx.jpg) and just filename
-    const key = filename.includes('/') ? filename : `products/${filename}`;
+    // Accept either a Cloudinary public_id or a full delivery URL
+    const publicId = filename.startsWith('http')
+      ? getPublicIdFromUrl(filename)
+      : decodeURIComponent(filename);
 
-    await deleteFromMinio(key);
+    if (!publicId) {
+      return res.status(400).json({ message: 'public_id tidak valid' });
+    }
+
+    await deleteFromCloudinary(publicId);
 
     res.json({ message: 'Gambar berhasil dihapus' });
   } catch (error) {
@@ -73,4 +111,3 @@ export const deleteProductImage = async (req: Request, res: Response) => {
     res.status(500).json({ message: 'Gagal menghapus gambar' });
   }
 };
-
