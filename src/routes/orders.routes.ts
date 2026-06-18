@@ -5,6 +5,7 @@ import {
   getUserOrders,
   getOrderDetail,
   cancelOrder,
+  confirmOrderReceived,
   getAllOrders,
   getOrderDetailAdmin,
   updateOrderStatus,
@@ -19,6 +20,7 @@ router.post('/', authenticateToken, createOrder);
 router.get('/my-orders', authenticateToken, getUserOrders);
 router.get('/:id', authenticateToken, getOrderDetail);
 router.post('/:id/cancel', authenticateToken, cancelOrder);
+router.post('/:id/received', authenticateToken, confirmOrderReceived);
 router.post('/:id/payment-proof', authenticateToken, uploadPaymentProof);
 
 // Admin routes

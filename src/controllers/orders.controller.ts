@@ -379,6 +379,59 @@ export const uploadPaymentProof = async (req: Request, res: Response) => {
   }
 };
 
+// Customer: confirm order received → moves order to 'delivered' and notifies admin
+export const confirmOrderReceived = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    const { id } = req.params;
+
+    const orderResult = await query(
+      'SELECT id, order_number, status, recipient_name FROM orders WHERE id = $1 AND user_id = $2',
+      [id, userId]
+    );
+
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ message: 'Pesanan tidak ditemukan' });
+    }
+
+    const order = orderResult.rows[0];
+
+    if (order.status === 'delivered') {
+      return res.status(400).json({ message: 'Pesanan sudah dikonfirmasi diterima' });
+    }
+
+    if (order.status !== 'shipped') {
+      return res.status(400).json({
+        message: 'Pesanan hanya dapat dikonfirmasi setelah dikirim',
+      });
+    }
+
+    const result = await query(
+      `UPDATE orders
+       SET status = 'delivered', delivered_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING *`,
+      [id]
+    );
+
+    // Notify admin that the customer has received the order
+    createNotification(
+      'order_received',
+      'Pesanan Diterima',
+      `Pesanan ${order.order_number} telah dikonfirmasi diterima oleh ${order.recipient_name}.`,
+      { order_id: order.id, order_number: order.order_number }
+    );
+
+    res.json({
+      message: 'Terima kasih! Pesanan telah dikonfirmasi diterima.',
+      data: result.rows[0],
+    });
+  } catch (error) {
+    console.error('Confirm order received error:', error);
+    res.status(500).json({ message: 'Terjadi kesalahan server' });
+  }
+};
+
 // Admin: Get all orders
 export const getAllOrders = async (req: Request, res: Response) => {
   try {
