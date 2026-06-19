@@ -9,7 +9,7 @@ const generateOrderNumber = () => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-  return `AFS-${year}${month}${day}-${random}`;
+  return `FMB-${year}${month}${day}-${random}`;
 };
 
 // Create order from cart

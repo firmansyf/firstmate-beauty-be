@@ -14,6 +14,7 @@ import otpRoutes from './otp.routes';
 import feedbackRoutes from './feedback.routes';
 import notificationRoutes from './notifications.routes';
 import settingsRoutes from './settings.routes';
+import wilayahRoutes from './wilayah.routes';
 
 const router = Router();
 
@@ -31,6 +32,7 @@ router.use('/banners', bannerRoutes);
 router.use('/feedback', feedbackRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/settings', settingsRoutes);
+router.use('/wilayah', wilayahRoutes);
 
 // Health check
 router.get('/health', (req, res) => {
