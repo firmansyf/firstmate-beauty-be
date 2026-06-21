@@ -9,8 +9,8 @@ const generateOTP = (): string => {
   return crypto.randomInt(100000, 999999).toString();
 };
 
-// OTP expires in 5 minutes
-const OTP_EXPIRY_MINUTES = 5;
+// OTP expires in 15 minutes
+const OTP_EXPIRY_MINUTES = 15;
 
 export const sendOTP = async (req: Request, res: Response) => {
   try {

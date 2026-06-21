@@ -31,7 +31,8 @@ export const authenticateToken = (
   try {
     const decoded = jwt.verify(
       token,
-      process.env.JWT_SECRET || 'secret'
+      process.env.JWT_SECRET as string,
+      { algorithms: ['HS256'] }
     ) as JwtPayload;
     req.user = decoded;
     next();

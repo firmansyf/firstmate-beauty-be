@@ -77,7 +77,11 @@ const buildOtpEmail = ({ title, intro, otpCode, footer }: OtpEmailParams): strin
 
 export const sendOTPEmail = async (email: string, otpCode: string): Promise<void> => {
   const apiKey = process.env.BREVO_API_KEY;
-  const from = process.env.SMTP_FROM || 'noreply@firstmate-beauty.com';
+  const from = process.env.SMTP_FROM;
+
+  if (!from) {
+    throw new Error('SMTP_FROM environment variable is not set');
+  }
 
   if (!apiKey) {
     throw new Error('BREVO_API_KEY environment variable is not set');
@@ -113,7 +117,11 @@ export const sendOTPEmail = async (email: string, otpCode: string): Promise<void
 
 export const sendPasswordResetEmail = async (email: string, otpCode: string): Promise<void> => {
   const apiKey = process.env.BREVO_API_KEY;
-  const from = process.env.SMTP_FROM || 'noreply@alfath-skin.com';
+  const from = process.env.SMTP_FROM;
+
+  if (!from) {
+    throw new Error('SMTP_FROM environment variable is not set');
+  }
 
   if (!apiKey) {
     throw new Error('BREVO_API_KEY environment variable is not set');

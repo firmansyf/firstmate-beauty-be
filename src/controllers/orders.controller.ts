@@ -332,6 +332,16 @@ export const uploadPaymentProof = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Bukti pembayaran wajib diunggah' });
     }
 
+    // Only accept Cloudinary URLs to prevent arbitrary URL injection
+    try {
+      const parsed = new URL(payment_proof_url);
+      if (!parsed.hostname.endsWith('cloudinary.com') || parsed.protocol !== 'https:') {
+        return res.status(400).json({ message: 'URL bukti pembayaran tidak valid' });
+      }
+    } catch {
+      return res.status(400).json({ message: 'URL bukti pembayaran tidak valid' });
+    }
+
     const orderResult = await query(
       'SELECT id, order_number, status, payment_status, recipient_name FROM orders WHERE id = $1 AND user_id = $2',
       [id, userId]

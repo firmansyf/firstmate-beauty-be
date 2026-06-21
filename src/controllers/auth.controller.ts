@@ -16,6 +16,11 @@ export const register = async (req: Request, res: Response) => {
       });
     }
 
+    // Validasi password
+    if (password.length < 8) {
+      return res.status(400).json({ message: 'Password minimal 8 karakter' });
+    }
+
     // Validasi nomor telepon
     if (!phone || phone.toString().trim().length < 10) {
       return res.status(400).json({
@@ -40,7 +45,7 @@ export const register = async (req: Request, res: Response) => {
 
         // Generate and send OTP
         const otpCode = crypto.randomInt(100000, 999999).toString();
-        const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
         await query(
           'UPDATE otp_verifications SET is_used = TRUE WHERE email = $1 AND is_used = FALSE',
@@ -81,7 +86,7 @@ export const register = async (req: Request, res: Response) => {
 
     // Generate and send OTP
     const otpCode = crypto.randomInt(100000, 999999).toString();
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
     await query(
       `INSERT INTO otp_verifications (email, otp_code, expires_at) VALUES ($1, $2, $3)`,
@@ -111,94 +116,41 @@ export const login = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
 
-    console.log('\n========== LOGIN DEBUG START ==========');
-    console.log('🔍 Login attempt:', { email, password });
-    console.log('🔍 Password length:', password?.length);
-    console.log('🔍 Password type:', typeof password);
-
-    // Validasi input
     if (!email || !password) {
-      console.log('❌ Validation failed: missing email or password');
-      return res.status(400).json({ 
-        message: 'Email dan password wajib diisi' 
+      return res.status(400).json({
+        message: 'Email dan password wajib diisi'
       });
     }
 
-    console.log('✅ Validation passed');
-    console.log('🔍 Querying database for user...');
-
-    // Cari user berdasarkan email
     const result = await query(
-      'SELECT * FROM users WHERE email = $1',
+      'SELECT id, name, email, phone, role, password, is_verified FROM users WHERE email = $1',
       [email]
     );
 
-    console.log('✅ Database query completed');
-    console.log('🔍 Rows returned:', result.rows.length);
-
     if (result.rows.length === 0) {
-      console.log('❌ User not found in database');
-      return res.status(401).json({
-        message: 'Email atau password salah'
-      });
+      return res.status(401).json({ message: 'Email atau password salah' });
     }
 
     const user = result.rows[0];
 
-    // Check if email is verified
     if (!user.is_verified) {
-      console.log('❌ User email not verified');
       return res.status(403).json({
         message: 'Email belum diverifikasi. Silakan verifikasi email Anda terlebih dahulu.',
         code: 'EMAIL_NOT_VERIFIED',
         data: { email: user.email, requiresVerification: true },
       });
     }
-    console.log('✅ User found:');
-    console.log('   - ID:', user.id);
-    console.log('   - Email:', user.email);
-    console.log('   - Role:', user.role);
-    console.log('   - Has password:', !!user.password);
-    console.log('   - Password hash length:', user.password?.length);
-    console.log('   - Password hash prefix:', user.password?.substring(0, 29) + '...');
 
-    console.log('\n🔐 Starting password verification...');
-    console.log('   - Input password:', password);
-    console.log('   - Stored hash:', user.password);
-
-    // Verifikasi password
-    try {
-      const isValidPassword = await bcrypt.compare(password, user.password);
-      console.log('✅ bcrypt.compare completed');
-      console.log('🔐 Password valid:', isValidPassword);
-
-      if (!isValidPassword) {
-        console.log('❌ Password does NOT match!');
-        console.log('   Input:', password);
-        console.log('   Expected hash:', user.password);
-        console.log('========== LOGIN DEBUG END (FAILED) ==========\n');
-        return res.status(401).json({ 
-          message: 'Email atau password salah' 
-        });
-      }
-
-      console.log('✅ Password matches! Proceeding to token generation...');
-    } catch (bcryptError) {
-      console.error('💥 bcrypt.compare ERROR:', bcryptError);
-      throw bcryptError;
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
+      return res.status(401).json({ message: 'Email atau password salah' });
     }
 
-    // Generate JWT token
-    console.log('🔑 Generating JWT token...');
     const token = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET || 'secret',
-      { expiresIn: process.env.JWT_EXPIRES_IN || '1d' } as jwt.SignOptions
+      process.env.JWT_SECRET as string,
+      { algorithm: 'HS256', expiresIn: (process.env.JWT_EXPIRES_IN || '1d') as jwt.SignOptions['expiresIn'] }
     );
-
-    console.log('✅ Token generated successfully');
-    console.log('✅✅✅ LOGIN SUCCESSFUL! ✅✅✅');
-    console.log('========== LOGIN DEBUG END (SUCCESS) ==========\n');
 
     res.json({
       message: 'Login berhasil',
@@ -214,8 +166,7 @@ export const login = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    console.error('💥💥💥 LOGIN ERROR:', error);
-    console.log('========== LOGIN DEBUG END (ERROR) ==========\n');
+    console.error('Login error:', error);
     res.status(500).json({ message: 'Terjadi kesalahan server' });
   }
 };
@@ -228,7 +179,6 @@ export const forgotPassword = async (req: Request, res: Response) => {
       return res.status(400).json({ message: 'Email wajib diisi' });
     }
 
-    // Check user exists and is verified
     const userResult = await query(
       'SELECT id FROM users WHERE email = $1 AND is_verified = TRUE',
       [email]
@@ -238,7 +188,34 @@ export const forgotPassword = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Email tidak terdaftar' });
     }
 
-    res.json({ message: 'Email ditemukan' });
+    // Rate limit: reject if OTP sent within last minute
+    const recentOTP = await query(
+      `SELECT id FROM otp_verifications
+       WHERE email = $1 AND created_at > NOW() - INTERVAL '1 minute' AND is_used = FALSE`,
+      [email]
+    );
+    if (recentOTP.rows.length > 0) {
+      return res.status(429).json({ message: 'Mohon tunggu 1 menit sebelum mengirim ulang kode' });
+    }
+
+    // Invalidate previous reset OTPs
+    await query(
+      "UPDATE otp_verifications SET is_used = TRUE WHERE email = $1 AND is_used = FALSE",
+      [email]
+    );
+
+    const otpCode = crypto.randomInt(100000, 999999).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    await query(
+      'INSERT INTO otp_verifications (email, otp_code, expires_at) VALUES ($1, $2, $3)',
+      [email, otpCode, expiresAt]
+    );
+
+    res.json({ message: 'Kode verifikasi telah dikirim ke email Anda' });
+
+    sendPasswordResetEmail(email, otpCode).catch((err: any) => {
+      console.error(`❌ Failed to send reset email to ${email}:`, err.message);
+    });
   } catch (error) {
     console.error('Forgot password error:', error);
     res.status(500).json({ message: 'Terjadi kesalahan server' });
@@ -247,32 +224,40 @@ export const forgotPassword = async (req: Request, res: Response) => {
 
 export const resetPassword = async (req: Request, res: Response) => {
   try {
-    const { email, newPassword } = req.body;
+    const { email, otp, newPassword } = req.body;
 
-    if (!email || !newPassword) {
-      return res.status(400).json({ message: 'Email dan password baru wajib diisi' });
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({ message: 'Email, kode OTP, dan password baru wajib diisi' });
     }
 
-    if (newPassword.length < 6) {
-      return res.status(400).json({ message: 'Password minimal 6 karakter' });
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: 'Password minimal 8 karakter' });
     }
 
-    // Check user exists and is verified
+    // Verify OTP
+    const otpResult = await query(
+      `SELECT id FROM otp_verifications
+       WHERE email = $1 AND otp_code = $2 AND is_used = FALSE AND expires_at > NOW()`,
+      [email, otp]
+    );
+
+    if (otpResult.rows.length === 0) {
+      return res.status(400).json({ message: 'Kode OTP tidak valid atau sudah kedaluwarsa' });
+    }
+
+    // Mark OTP as used
+    await query('UPDATE otp_verifications SET is_used = TRUE WHERE id = $1', [otpResult.rows[0].id]);
+
     const userResult = await query(
       'SELECT id FROM users WHERE email = $1 AND is_verified = TRUE',
       [email]
     );
-
     if (userResult.rows.length === 0) {
       return res.status(404).json({ message: 'Email tidak ditemukan' });
     }
 
-    // Update password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await query(
-      'UPDATE users SET password = $1 WHERE email = $2',
-      [hashedPassword, email]
-    );
+    await query('UPDATE users SET password = $1 WHERE email = $2', [hashedPassword, email]);
 
     res.json({ message: 'Password berhasil direset. Silakan login dengan password baru.' });
   } catch (error) {
