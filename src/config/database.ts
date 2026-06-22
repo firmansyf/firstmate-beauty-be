@@ -16,13 +16,15 @@ if (process.env.DATABASE_URL) {
     connectionTimeoutMillis: 10000,
   };
 } else {
-  // Local development: use individual env vars
+  // Local development / cPanel: use individual env vars
   poolConfig = {
-    host: process.env.DB_HOST || 'localhost',
+    host: process.env.DB_HOST || '127.0.0.1',
     port: parseInt(process.env.DB_PORT || '5432'),
     database: process.env.DB_NAME || 'db_alfath_skin',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD,
+    // cPanel PostgreSQL does not support SSL; use plain TCP via IPv4 (127.0.0.1)
+    ssl: false,
     max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
@@ -38,7 +40,6 @@ pool.on('connect', () => {
 
 pool.on('error', (err) => {
   console.error('❌ Unexpected error on idle client', err);
-  process.exit(-1);
 });
 
 // Query helper

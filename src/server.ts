@@ -22,6 +22,9 @@ if (!process.env.JWT_SECRET) {
 const app: Application = express();
 const PORT = process.env.PORT || 5000;
 
+// Trust reverse proxy (cPanel, Nginx, etc.) — required for express-rate-limit and correct IP detection
+app.set('trust proxy', 1);
+
 const allowedOrigins = process.env.FRONTEND_URL
   ? [process.env.FRONTEND_URL]
   : ['http://localhost:3100'];
@@ -96,7 +99,11 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 const start = async () => {
   try {
     // Auto-run database migrations
-    await runMigrations();
+    try {
+      await runMigrations();
+    } catch (migrationError) {
+      console.error('⚠️ Migration failed, starting server anyway:', migrationError);
+    }
 
     // Start server
     app.listen(PORT, () => {
