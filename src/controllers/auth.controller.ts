@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import crypto from 'crypto';
+import axios from 'axios';
 import { query } from '../config/database';
 import { sendOTPEmail, sendPasswordResetEmail } from '../config/email';
 
@@ -141,6 +142,13 @@ export const login = async (req: Request, res: Response) => {
       });
     }
 
+    if (!user.password) {
+      return res.status(401).json({
+        message: 'Akun ini menggunakan login Google. Silakan masuk dengan Google.',
+        code: 'GOOGLE_ACCOUNT',
+      });
+    }
+
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
       return res.status(401).json({ message: 'Email atau password salah' });
@@ -262,6 +270,73 @@ export const resetPassword = async (req: Request, res: Response) => {
     res.json({ message: 'Password berhasil direset. Silakan login dengan password baru.' });
   } catch (error) {
     console.error('Reset password error:', error);
+    res.status(500).json({ message: 'Terjadi kesalahan server' });
+  }
+};
+
+export const googleAuth = async (req: Request, res: Response) => {
+  try {
+    const { access_token } = req.body;
+
+    if (!access_token) {
+      return res.status(400).json({ message: 'Access token Google wajib diisi' });
+    }
+
+    // Fetch user info from Google
+    const googleRes = await axios.get('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${access_token}` },
+    });
+
+    const { sub: googleId, email, name, email_verified } = googleRes.data;
+
+    if (!email_verified) {
+      return res.status(400).json({ message: 'Email Google tidak terverifikasi' });
+    }
+
+    // Find existing user by google_id or email
+    const existing = await query(
+      'SELECT id, name, email, phone, role, google_id FROM users WHERE google_id = $1 OR email = $2',
+      [googleId, email]
+    );
+
+    let userId: number;
+    let userData: { id: number; name: string; email: string; phone: string | null; role: string };
+
+    if (existing.rows.length > 0) {
+      const user = existing.rows[0];
+      // Link google_id if this was a regular account
+      if (!user.google_id) {
+        await query('UPDATE users SET google_id = $1, is_verified = TRUE WHERE id = $2', [googleId, user.id]);
+      }
+      userId = user.id;
+      userData = { id: user.id, name: user.name, email: user.email, phone: user.phone, role: user.role };
+    } else {
+      // Create new Google user (no password, auto-verified)
+      const inserted = await query(
+        `INSERT INTO users (name, email, google_id, role, is_verified)
+         VALUES ($1, $2, $3, 'customer', TRUE)
+         RETURNING id, name, email, phone, role`,
+        [name, email, googleId]
+      );
+      userId = inserted.rows[0].id;
+      userData = inserted.rows[0];
+    }
+
+    const token = jwt.sign(
+      { userId, email: userData.email, role: userData.role },
+      process.env.JWT_SECRET as string,
+      { algorithm: 'HS256', expiresIn: (process.env.JWT_EXPIRES_IN || '1d') as jwt.SignOptions['expiresIn'] }
+    );
+
+    res.json({
+      message: 'Login berhasil',
+      data: { user: userData, token },
+    });
+  } catch (error: any) {
+    console.error('Google auth error:', error.message);
+    if (error.response?.status === 401) {
+      return res.status(401).json({ message: 'Token Google tidak valid atau sudah kadaluarsa' });
+    }
     res.status(500).json({ message: 'Terjadi kesalahan server' });
   }
 };

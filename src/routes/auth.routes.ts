@@ -1,7 +1,7 @@
 // src/routes/auth.routes.ts
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { register, login, getProfile, forgotPassword, resetPassword } from '../controllers/auth.controller';
+import { register, login, getProfile, forgotPassword, resetPassword, googleAuth } from '../controllers/auth.controller';
 import { authenticateToken } from '../middleware/auth';
 
 const router = Router();
@@ -25,6 +25,7 @@ const forgotPasswordLimiter = rateLimit({
 // Public routes
 router.post('/register', register);
 router.post('/login', loginLimiter, login);
+router.post('/google', loginLimiter, googleAuth);
 router.post('/forgot-password', forgotPasswordLimiter, forgotPassword);
 router.post('/reset-password', forgotPasswordLimiter, resetPassword);
 

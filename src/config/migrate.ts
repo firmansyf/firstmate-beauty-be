@@ -16,6 +16,10 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 
+ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(255) UNIQUE;
+ALTER TABLE users ALTER COLUMN password DROP NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
+
 -- 2. CATEGORIES
 CREATE TABLE IF NOT EXISTS categories (
     id SERIAL PRIMARY KEY,
