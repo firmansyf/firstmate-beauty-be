@@ -534,7 +534,7 @@ export const getOrderDetailAdmin = async (req: Request, res: Response) => {
 export const updateOrderStatus = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { status, payment_status, admin_notes } = req.body;
+    const { status, payment_status, admin_notes, tracking_number, tracking_url } = req.body;
 
     const updates: string[] = [];
     const params: any[] = [];
@@ -570,6 +570,18 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
       paramCount++;
       updates.push(`admin_notes = $${paramCount}`);
       params.push(admin_notes);
+    }
+
+    if (tracking_number !== undefined) {
+      paramCount++;
+      updates.push(`tracking_number = $${paramCount}`);
+      params.push(tracking_number || null);
+    }
+
+    if (tracking_url !== undefined) {
+      paramCount++;
+      updates.push(`tracking_url = $${paramCount}`);
+      params.push(tracking_url || null);
     }
 
     if (updates.length === 0) {

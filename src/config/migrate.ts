@@ -130,6 +130,8 @@ CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_payment_status ON orders(payment_status);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_orders_status_payment_created ON orders(status, payment_status, created_at DESC);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_number VARCHAR(100);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_url VARCHAR(500);
 
 -- 7. ORDER_ITEMS
 CREATE TABLE IF NOT EXISTS order_items (
